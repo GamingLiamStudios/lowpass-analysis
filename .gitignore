@@ -1,0 +1,7 @@
+/target
+/videos
+
+# IDEs
+.vscode
+.vs
+.idea
