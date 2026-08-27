@@ -17,6 +17,11 @@ tracing-subscriber = "0.3"
 thiserror = "2.0"
 
 ffmpeg-next = "9.0"
+wgpu = "30.0"
+wgpu-hal = "30.0"
+ash = "0.38"
 
 egui = "0.36"
+egui-wgpu = "0.36"
 eframe = "0.36"
+pollster = "1.0"
