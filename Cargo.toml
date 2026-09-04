@@ -11,15 +11,26 @@ unwrap_used = "deny"
 perf = "deny"
 all = "deny"
 
+[package.metadata.system-deps]
+libplacebo = "7.360"
+
+[build-dependencies]
+bindgen = "0.72"
+system-deps = "9.0"
+
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = "0.3"
 thiserror = "2.0"
 
+# TODO: Add feature gates for OGL, Vulkan, DX12, etc
 ffmpeg-next = "9.0"
 wgpu = "30.0"
 wgpu-hal = "30.0"
 ash = "0.38"
+libc = "0.2"
+
+uuid = "1.26"
 
 egui = "0.36"
 egui-wgpu = "0.36"
