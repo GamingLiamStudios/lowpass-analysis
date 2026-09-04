@@ -1,6 +1,8 @@
 #![feature(pointer_try_cast_aligned)]
 
 use std::{
+    collections::HashMap,
+    hash::Hash,
     ptr::NonNull,
     rc::Rc,
 };
@@ -139,22 +141,125 @@ enum InitError {
     VideoStreamLoadError(#[from] ffmpeg::Error),
 }
 
-struct App<'a> {
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct FrameProps {
+    width:  u32,
+    height: u32,
+    pixfmt: Pixel,
+}
+
+impl Hash for FrameProps {
+    fn hash<H: std::hash::Hasher>(
+        &self,
+        state: &mut H,
+    ) {
+        state.write_u32(self.width);
+        state.write_u32(self.height);
+        state.write_u32(self.pixfmt as u32);
+    }
+}
+
+struct App<'vulkan, 'placebo: 'vulkan> {
     clean:     FrameIterator,
     lowpassed: FrameIterator,
 
-    backend: Rc<VulkanBackend<'a>>,
-    placebo: libplacebo::vulkan::GpuVk,
+    backend:       Rc<VulkanBackend<'vulkan>>,
+    placebo:       libplacebo::vulkan::GpuVk<'placebo>,
+    texture_cache: HashMap<FrameProps, Vec<libplacebo::Texture<'placebo>>>,
 }
 
-impl<'a> App<'a> {
+impl<'vulkan, 'placebo> App<'vulkan, 'placebo> {
     const CLEAN_VIDEO_PATH: &'static str = "videos/clean.m2ts";
     const LOWPASSED_VIDEO_PATH: &'static str = "videos/lowpassed.m2ts";
+
+    fn release_texture(
+        &mut self,
+        frame: &VideoFrame,
+    ) -> Option<libplacebo::Texture<'placebo>> {
+        let props = FrameProps {
+            width:  frame.width(),
+            height: frame.height(),
+            pixfmt: frame.format(),
+        };
+
+        self.texture_cache
+            .get_mut(&props)
+            .map_or_else(|| None, std::vec::Vec::pop)
+    }
+
+    fn consume_texture(
+        &mut self,
+        frame: libplacebo::Frame<'placebo>,
+    ) {
+        let src_frame = frame
+            .source_avframe()
+            .expect("This shouldn't be anything but an AVFrame");
+
+        let props = FrameProps {
+            width:  src_frame.width(),
+            height: src_frame.height(),
+            pixfmt: src_frame.format(),
+        };
+
+        if let Some(texture) = frame.drop_retain() {
+            texture.invalidate();
+            self.texture_cache.entry(props).or_default().push(texture);
+        }
+    }
+
+    fn process_pair(&mut self) {
+        // To process pair of frames;
+        // - Decode frames
+        // - Copy over to libplacebo
+        // - Reduce to luma
+        // - Test many, many lowpasses & determine best-fit
+        let gpu = self.placebo.as_gpu();
+
+        let Some(next_clean) = self.clean.next() else {
+            return; // End of stream
+        };
+        let clean_frame = match next_clean {
+            Ok(frame) => frame,
+            Err(error) => {
+                error!(?error, "Encountered error while decoding frame");
+                return;
+            },
+        };
+
+        let Some(next_dirty) = self.lowpassed.next() else {
+            return; // End of stream
+        };
+        let dirty_frame = match next_dirty {
+            Ok(frame) => frame,
+            Err(error) => {
+                error!(?error, "Encountered error while decoding frame");
+                return;
+            },
+        };
+
+        let clean_tex = self.release_texture(&clean_frame);
+        let Some(clean_frame) = gpu.import_avframe(&clean_frame, clean_tex, false) else {
+            error!("Failed to transfer AVFrame to Libplacebo");
+            return;
+        };
+
+        let dirty_tex = self.release_texture(&dirty_frame);
+        let Some(dirty_frame) = gpu.import_avframe(&dirty_frame, dirty_tex, false) else {
+            error!("Failed to transfer AVFrame to Libplacebo");
+            return;
+        };
+
+        info!("Collected frames with libplacebo");
+
+        // Return textures to cache
+        self.consume_texture(clean_frame);
+        self.consume_texture(dirty_frame);
+    }
 
     #[allow(clippy::missing_const_for_fn)]
     fn new(
         cc: &eframe::CreationContext<'_>,
-        backend: Rc<VulkanBackend<'a>>,
+        backend: Rc<VulkanBackend<'vulkan>>,
         placebo_log: libplacebo::Log,
     ) -> Result<Self, InitError> {
         let render_state = cc.wgpu_render_state.as_ref().expect("Missing render state");
@@ -190,15 +295,16 @@ impl<'a> App<'a> {
         let dirty_frames = FrameIterator::new(dirty_ctx, hwdevice_ctx.as_ref())?;
 
         Ok(Self {
-            clean: clean_frames,
-            lowpassed: dirty_frames,
-            backend,
-            placebo: libplacebo_ctx,
+            clean:         clean_frames,
+            lowpassed:     dirty_frames,
+            backend:       backend.clone(),
+            placebo:       libplacebo_ctx,
+            texture_cache: HashMap::new(),
         })
     }
 }
 
-impl eframe::App for App<'_> {
+impl eframe::App for App<'_, '_> {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -208,6 +314,9 @@ impl eframe::App for App<'_> {
 
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("So you want to delowpass");
+            if ui.button("test").clicked() {
+                self.process_pair();
+            }
         });
     }
 }

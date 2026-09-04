@@ -397,7 +397,7 @@ pub struct VulkanBackend<'a> {
     device_queues:   Vec<ffmpeg::ffi::AVVulkanDeviceQueueFamily>,
 }
 
-impl VulkanBackend<'_> {
+impl<'a> VulkanBackend<'a> {
     pub fn egui_existing(&self) -> egui_wgpu::WgpuSetupExisting {
         egui_wgpu::WgpuSetupExisting {
             instance: self.instance.clone(),
@@ -610,10 +610,10 @@ impl VulkanBackend<'_> {
         }
     }
 
-    pub fn create_libplacebo_ctx(
+    pub fn create_libplacebo_ctx<'placebo: 'a>(
         self: &Rc<Self>,
         log: libplacebo::Log,
-    ) -> Result<libplacebo::vulkan::GpuVk, HWDeviceError> {
+    ) -> Result<libplacebo::vulkan::GpuVk<'placebo>, HWDeviceError> {
         unsafe {
             // Convert wgpu to vulkan hal
             let Some(hal_instance) = self.instance.as_hal::<wgpu_hal::api::Vulkan>() else {
@@ -712,11 +712,11 @@ impl VulkanBackend<'_> {
         Ok(families)
     }
 
-    unsafe fn select_features<'a>(
+    unsafe fn select_features<'b>(
         mut wgpu_features: wgpu_hal::vulkan::PhysicalDeviceFeatures,
         instance: &ash::Instance,
         physical_device: ash::vk::PhysicalDevice,
-    ) -> Result<ash::vk::PhysicalDeviceFeatures2<'a>, WgpuInitError> {
+    ) -> Result<ash::vk::PhysicalDeviceFeatures2<'b>, WgpuInitError> {
         unsafe {
             let placebo_required = libplacebo::vulkan::GpuVk::required_device_features();
             let placebo_recommended = libplacebo::vulkan::GpuVk::recommended_device_features();

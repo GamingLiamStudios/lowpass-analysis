@@ -187,12 +187,13 @@ pub struct InitParamsExisting<'a> {
 // Can be constructed 3 different ways; Entirely by libplacebo, with a supplied
 // VkInstance (and optionally VkPhysicalDevice), and with a supplied
 // VkDevice + VkQueue
-pub struct GpuVk {
-    handle: ffi::pl_vulkan,
-    _log:   Log,
+pub struct GpuVk<'a> {
+    handle:  ffi::pl_vulkan,
+    _log:    Log,
+    _marker: PhantomData<&'a ()>,
 }
 
-impl Drop for GpuVk {
+impl Drop for GpuVk<'_> {
     fn drop(&mut self) {
         unsafe {
             ffi::pl_vulkan_destroy(&raw mut self.handle);
@@ -200,7 +201,7 @@ impl Drop for GpuVk {
     }
 }
 
-impl GpuVk {
+impl<'a> GpuVk<'a> {
     /// For purely informative reasons, this contains a list of extensions that
     /// libplacebo *can* make use of. These are all strictly optional, but
     /// provide a hint to the API user as to what might be worth enabling at
@@ -320,8 +321,9 @@ impl GpuVk {
                 None
             } else {
                 Some(Self {
-                    handle: inst,
-                    _log:   log,
+                    handle:  inst,
+                    _log:    log,
+                    _marker: PhantomData,
                 })
             }
         }
@@ -331,7 +333,7 @@ impl GpuVk {
         self.handle
     }
 
-    pub const fn as_gpu(&self) -> Gpu {
+    pub const fn as_gpu(&self) -> Gpu<'a> {
         unsafe {
             Gpu {
                 handle:  self.handle.read().gpu,

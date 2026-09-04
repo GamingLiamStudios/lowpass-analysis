@@ -1,8 +1,11 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Tier 4
 #include <libplacebo/renderer.h>
 #include <libplacebo/utils/upload.h>
 
-#define PL_LIBAV_IMPLEMENTATION 1
 #include <vulkan/vulkan.h>
 #include <libplacebo/utils/libav.h>
 
@@ -22,3 +25,7 @@
 
 // Tier 0
 #include <libplacebo/log.h>
+
+#ifdef __cplusplus
+}
+#endif

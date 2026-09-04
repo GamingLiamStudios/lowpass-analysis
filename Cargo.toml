@@ -13,10 +13,13 @@ all = "deny"
 
 [package.metadata.system-deps]
 libplacebo = "7.360"
+libavutil = "61"
+libavformat = "63"
 
 [build-dependencies]
 bindgen = "0.72"
 system-deps = "9.0"
+cc = "1.4"
 
 [dependencies]
 tracing = "0.1"

@@ -8,6 +8,7 @@ use ffmpeg_next::format::Pixel;
 
 use super::ffi;
 
+#[derive(Debug)]
 pub struct Texture<'a> {
     handle: ffi::pl_tex,
     gpu:    Gpu<'a>,
@@ -17,6 +18,18 @@ impl Drop for Texture<'_> {
     fn drop(&mut self) {
         unsafe {
             ffi::pl_tex_destroy(self.gpu.handle, &raw mut self.handle);
+        }
+    }
+}
+
+impl Texture<'_> {
+    pub const fn handle(&self) -> ffi::pl_tex {
+        self.handle
+    }
+
+    pub fn invalidate(&self) {
+        unsafe {
+            ffi::pl_tex_invalidate(self.gpu.handle, self.handle);
         }
     }
 }
@@ -41,6 +54,17 @@ impl<'a> Frame<'a> {
             },
         }
     }
+
+    pub fn source_avframe(&self) -> Option<ffmpeg_next::frame::Video> {
+        unsafe {
+            match &self.source {
+                FrameSource::AVFrame { gpu: _, texture: _ } => {
+                    let frame = ffi::pl_get_mapped_avframe(&raw const self.inner);
+                    Some(ffmpeg_next::frame::Video::wrap(frame.cast()))
+                },
+            }
+        }
+    }
 }
 
 impl Drop for Frame<'_> {
@@ -61,7 +85,7 @@ pub struct Gpu<'a> {
     pub(super) _marker: PhantomData<&'a ()>,
 }
 
-impl Gpu<'_> {
+impl<'a> Gpu<'a> {
     pub fn is_pixfmt_supported(
         &self,
         pixfmt: Pixel,
@@ -76,10 +100,10 @@ impl Gpu<'_> {
 
     pub fn import_avframe(
         &self,
-        avframe: &ffmpeg_next::Frame,
+        avframe: &ffmpeg_next::frame::Video,
         backing_texture: Option<Texture>,
         map_dovi: bool,
-    ) -> Option<Frame<'_>> {
+    ) -> Option<Frame<'a>> {
         unsafe {
             let mut tex = backing_texture.map_or(std::ptr::null(), |tex| tex.handle);
             let params = ffi::pl_avframe_params {

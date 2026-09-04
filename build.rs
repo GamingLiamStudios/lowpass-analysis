@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    env::temp_dir,
+    path::PathBuf,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: Implement building if libplacebo doesn't exist (windows moment)
@@ -11,7 +14,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allowlist_recursively(true)
         .clang_macro_fallback()
         .prepend_enum_name(false)
-        .default_macro_constant_type(bindgen::MacroTypeVariation::Signed);
+        .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
+        .wrap_static_fns(true);
+
+    let mut path = temp_dir();
+    path.push("bindgen/extern.c");
+    cc::Build::new()
+        .file(path)
+        .includes(dependencies.all_include_paths())
+        .include(".")
+        .compile("libplacebo_av");
 
     for (_, lib) in dependencies.iter() {
         for path in lib.include_paths.iter().filter_map(|path| path.to_str()) {
